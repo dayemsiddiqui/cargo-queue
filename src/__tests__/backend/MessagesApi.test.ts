@@ -1,16 +1,14 @@
-import { connect, clearDatabase, closeDatabase, getModels } from '../utils/db-utils';
+import { connect, clearDatabase, closeDatabase } from '../utils/db-utils';
 import { NextRequest } from 'next/server';
+import { ApiError } from '@/lib/errors/ApiError';
 
-// Mock the Queue and Message models
-jest.mock('@/lib/models/Queue', () => {
+// Mock the QueueService
+jest.mock('@/lib/services/QueueService', () => {
   return {
-    Queue: {
-      findOne: jest.fn(),
-    },
-    Message: {
-      create: jest.fn(),
-      findOne: jest.fn(),
-      findByIdAndUpdate: jest.fn()
+    queueService: {
+      sendMessage: jest.fn(),
+      pollMessage: jest.fn(),
+      acknowledgeMessage: jest.fn()
     }
   };
 });
@@ -43,31 +41,19 @@ const createMockRequest = (url: string, method: string, body?: any) => {
 };
 
 describe('Messages API Routes', () => {
-  let queueId: string;
-  let queueSlug: string;
-  
-  beforeEach(async () => {
-    // Create a test queue
-    const { Queue } = getModels();
-    const queue = await Queue.create({ name: 'Test Queue', slug: 'test-queue' });
-    queueId = queue._id.toString();
-    queueSlug = queue.slug;
-    
-    // Mock the Queue.findOne to return our test queue
-    require('@/lib/models/Queue').Queue.findOne.mockResolvedValue(queue);
-  });
+  const queueSlug = 'test-queue';
   
   describe('POST /api/queues/[slug]/messages', () => {
     it('should create a new message', async () => {
-      // Mock the Message.create to return a new message
+      // Mock the sendMessage to return a new message
       const mockMessage = {
         _id: '123',
         body: 'Test message content',
-        queueId,
+        queueId: 'queue123',
         processed: false,
         createdAt: new Date()
       };
-      require('@/lib/models/Queue').Message.create.mockResolvedValue(mockMessage);
+      require('@/lib/services/QueueService').queueService.sendMessage.mockResolvedValue(mockMessage);
       
       // Mock request
       const req = createMockRequest(
@@ -83,6 +69,8 @@ describe('Messages API Routes', () => {
       expect(response.status).toBe(201);
       expect(data.message).toBeDefined();
       expect(data.message.body).toBe('Test message content');
+      expect(require('@/lib/services/QueueService').queueService.sendMessage)
+        .toHaveBeenCalledWith(queueSlug, 'Test message content');
     });
     
     it('should return error if message is missing', async () => {
@@ -102,8 +90,9 @@ describe('Messages API Routes', () => {
     });
     
     it('should return error if queue does not exist', async () => {
-      // Mock Queue.findOne to return null
-      require('@/lib/models/Queue').Queue.findOne.mockResolvedValue(null);
+      // Mock sendMessage to throw a proper ApiError for not found
+      const error = ApiError.notFound('Queue not found');
+      require('@/lib/services/QueueService').queueService.sendMessage.mockRejectedValue(error);
       
       // Mock request
       const req = createMockRequest(
@@ -127,15 +116,13 @@ describe('Messages API Routes', () => {
       const mockMessage = {
         _id: '123',
         body: 'Message 1',
-        queueId,
+        queueId: 'queue123',
         processed: false,
         createdAt: new Date(Date.now() - 2000)
       };
       
-      // Mock Message.findOne to return our test message
-      require('@/lib/models/Queue').Message.findOne.mockReturnValue({
-        sort: jest.fn().mockResolvedValue(mockMessage)
-      });
+      // Mock pollMessage to return our test message
+      require('@/lib/services/QueueService').queueService.pollMessage.mockResolvedValue(mockMessage);
       
       // Mock request
       const req = createMockRequest(
@@ -150,13 +137,13 @@ describe('Messages API Routes', () => {
       expect(response.status).toBe(200);
       expect(data.message).toBeDefined();
       expect(data.message.body).toBe('Message 1');
+      expect(require('@/lib/services/QueueService').queueService.pollMessage)
+        .toHaveBeenCalledWith(queueSlug);
     });
     
     it('should return null if no messages are available', async () => {
-      // Mock Message.findOne to return null
-      require('@/lib/models/Queue').Message.findOne.mockReturnValue({
-        sort: jest.fn().mockResolvedValue(null)
-      });
+      // Mock pollMessage to return null
+      require('@/lib/services/QueueService').queueService.pollMessage.mockResolvedValue(null);
       
       // Mock request
       const req = createMockRequest(
@@ -179,12 +166,12 @@ describe('Messages API Routes', () => {
       const mockMessage = {
         _id: 'msg123',
         body: 'Test message',
-        queueId,
+        queueId: 'queue123',
         processed: true
       };
       
-      // Mock Message.findByIdAndUpdate to return the updated message
-      require('@/lib/models/Queue').Message.findByIdAndUpdate.mockResolvedValue(mockMessage);
+      // Mock acknowledgeMessage to return the updated message
+      require('@/lib/services/QueueService').queueService.acknowledgeMessage.mockResolvedValue(mockMessage);
       
       // Mock request
       const req = createMockRequest(
@@ -198,6 +185,8 @@ describe('Messages API Routes', () => {
       
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
+      expect(require('@/lib/services/QueueService').queueService.acknowledgeMessage)
+        .toHaveBeenCalledWith('msg123');
     });
     
     it('should return error if messageId is missing', async () => {
@@ -216,8 +205,9 @@ describe('Messages API Routes', () => {
     });
     
     it('should return error if message does not exist', async () => {
-      // Mock Message.findByIdAndUpdate to return null
-      require('@/lib/models/Queue').Message.findByIdAndUpdate.mockResolvedValue(null);
+      // Mock acknowledgeMessage to throw a proper ApiError for not found
+      const error = ApiError.notFound('Message not found');
+      require('@/lib/services/QueueService').queueService.acknowledgeMessage.mockRejectedValue(error);
       
       // Mock request
       const req = createMockRequest(
