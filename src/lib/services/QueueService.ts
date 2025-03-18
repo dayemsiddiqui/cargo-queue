@@ -7,7 +7,7 @@ export class QueueService {
     // Find the queue
     const queue = await queueRepository.findBySlug(slug);
     if (!queue) {
-      throw ApiError.notFound(`Queue with slug '${slug}' not found`);
+      throw ApiError.notFound(`Queue not found`);
     }
 
     // Create a new message
@@ -35,7 +35,7 @@ export class QueueService {
     // Mark message as processed
     const message = await messageRepository.markAsProcessed(messageId);
     if (!message) {
-      throw ApiError.notFound(`Message with ID '${messageId}' not found`);
+      throw ApiError.notFound(`Message not found`);
     }
     
     return message;

@@ -5,7 +5,11 @@ import mongoose from 'mongoose';
 // Create a new mongoose instance for tests
 const { Schema } = mongoose;
 // Disconnect from any existing connection first
-mongoose.connection.close();
+mongoose.connections.forEach(conn => {
+  if (conn.readyState !== 0) {
+    conn.close();
+  }
+});
 
 // MongoDB Memory Server setup
 let mongoMemoryServer: MongoMemoryServer;
@@ -55,21 +59,26 @@ const MessageSchema = new Schema({
 
 // Connect to an in-memory MongoDB for testing
 export const connect = async () => {
-  // Create the in-memory MongoDB server
-  mongoMemoryServer = await MongoMemoryServer.create();
-  const uri = mongoMemoryServer.getUri();
-  
-  // Connect to the in-memory database
-  await mongoose.connect(uri);
+  try {
+    // Create the in-memory MongoDB server
+    mongoMemoryServer = await MongoMemoryServer.create();
+    const uri = mongoMemoryServer.getUri();
+    
+    // Connect with a unique connection instance for tests
+    await mongoose.connect(uri);
 
-  // Clear existing models to prevent overwrite errors
-  Object.keys(mongoose.models).forEach(key => {
-    delete mongoose.models[key];
-  });
+    // Clear existing models to prevent overwrite errors
+    Object.keys(mongoose.models).forEach(key => {
+      delete mongoose.models[key];
+    });
 
-  // Create models
-  mongoose.model('Queue', QueueSchema);
-  mongoose.model('Message', MessageSchema);
+    // Create models
+    mongoose.model('Queue', QueueSchema);
+    mongoose.model('Message', MessageSchema);
+  } catch (error) {
+    console.error('Failed to connect to in-memory MongoDB', error);
+    throw error;
+  }
 };
 
 // Clear all data between tests
