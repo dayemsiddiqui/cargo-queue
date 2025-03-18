@@ -112,7 +112,7 @@ describe('Queues API Routes', () => {
       expect(data.queue).toBeDefined();
       expect(data.queue.name).toBe('New Queue');
       expect(data.queue.slug).toBe('new-queue');
-      expect(require('@/lib/services/QueueService').queueService.createQueue).toHaveBeenCalledWith('New Queue');
+      expect(require('@/lib/services/QueueService').queueService.createQueue).toHaveBeenCalledWith('New Queue', undefined);
     });
     
     it('should return error if name is missing', async () => {

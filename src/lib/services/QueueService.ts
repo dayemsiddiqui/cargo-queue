@@ -116,6 +116,38 @@ export class QueueService {
     
     return message;
   }
+
+  async purgeQueue(slug: string) {
+    // Find the queue
+    const queue = await queueRepository.findBySlug(slug);
+    if (!queue) {
+      throw ApiError.notFound(`Queue with slug '${slug}' not found`);
+    }
+
+    // Delete all messages in the queue
+    const result = await messageRepository.deleteByQueueId(queue._id);
+    
+    return {
+      purged: true,
+      count: result.deletedCount
+    };
+  }
+
+  async deleteQueue(slug: string) {
+    // Find the queue
+    const queue = await queueRepository.findBySlug(slug);
+    if (!queue) {
+      throw ApiError.notFound(`Queue with slug '${slug}' not found`);
+    }
+
+    // Delete the queue
+    await queueRepository.delete(queue._id.toString());
+    
+    return {
+      success: true,
+      message: `Queue '${slug}' deleted successfully`
+    };
+  }
 }
 
 // Create a singleton instance

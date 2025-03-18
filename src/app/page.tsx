@@ -78,6 +78,9 @@ export default function Home() {
   const [queueToUpdate, setQueueToUpdate] = useState<Queue | null>(null);
   const [updatedRetentionPeriod, setUpdatedRetentionPeriod] =
     useState<string>("");
+  const [deleteQueueDialogOpen, setDeleteQueueDialogOpen] =
+    useState<boolean>(false);
+  const [queueToDelete, setQueueToDelete] = useState<Queue | null>(null);
 
   // Polling states
   const [pollingQueue, setPollingQueue] = useState<string>("");
@@ -136,6 +139,88 @@ export default function Home() {
       setError(err.message);
       toast.error(err.message || "Failed to create queue");
       console.error(err);
+    }
+  };
+
+  // Delete a queue completely
+  const deleteQueue = async () => {
+    if (!queueToDelete) return;
+
+    try {
+      const response = await fetch(`/api/queues/${queueToDelete.slug}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to delete queue");
+      }
+
+      // Remove the queue from the UI
+      setQueues((prevQueues) =>
+        prevQueues.filter((q) => q._id !== queueToDelete._id)
+      );
+
+      // If we were polling this queue, stop polling
+      if (pollingQueueData && pollingQueueData._id === queueToDelete._id) {
+        stopPolling();
+      }
+
+      setDeleteQueueDialogOpen(false);
+      setQueueToDelete(null);
+      toast.success(`Queue "${queueToDelete.name}" has been deleted`);
+    } catch (err: any) {
+      console.error("Failed to delete queue:", err);
+      toast.error(err.message || "Failed to delete queue");
+    }
+  };
+
+  // Combined purge and delete operation
+  const purgeAndDeleteQueue = async () => {
+    if (!queueToDelete) return;
+
+    try {
+      // First purge all messages
+      const purgeResponse = await fetch(
+        `/api/queues/${queueToDelete.slug}/purge`,
+        {
+          method: "POST",
+        }
+      );
+
+      if (!purgeResponse.ok) {
+        const data = await purgeResponse.json();
+        throw new Error(data.error || "Failed to purge queue");
+      }
+
+      // Then delete the queue
+      const deleteResponse = await fetch(`/api/queues/${queueToDelete.slug}`, {
+        method: "DELETE",
+      });
+
+      if (!deleteResponse.ok) {
+        const data = await deleteResponse.json();
+        throw new Error(data.error || "Failed to delete queue");
+      }
+
+      // Remove the queue from the UI
+      setQueues((prevQueues) =>
+        prevQueues.filter((q) => q._id !== queueToDelete._id)
+      );
+
+      // If we were polling this queue, stop polling
+      if (pollingQueueData && pollingQueueData._id === queueToDelete._id) {
+        stopPolling();
+      }
+
+      setDeleteQueueDialogOpen(false);
+      setQueueToDelete(null);
+      toast.success(
+        `Queue "${queueToDelete.name}" has been purged and deleted`
+      );
+    } catch (err: any) {
+      console.error("Failed to purge and delete queue:", err);
+      toast.error(err.message || "Failed to purge and delete queue");
     }
   };
 
@@ -534,6 +619,32 @@ export default function Home() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+          <Dialog
+            open={deleteQueueDialogOpen}
+            onOpenChange={setDeleteQueueDialogOpen}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Purge & Delete Queue</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to purge and delete the queue "
+                  {queueToDelete?.name}"? This will permanently remove all
+                  messages and the queue itself. This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteQueueDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={purgeAndDeleteQueue}>
+                  Purge & Delete
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -554,54 +665,6 @@ export default function Home() {
         </Card>
       ) : (
         <div className="grid gap-6">
-          {/* Update Retention Policy Dialog */}
-          <Dialog
-            open={updateRetentionDialogOpen}
-            onOpenChange={setUpdateRetentionDialogOpen}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Update Retention Policy</DialogTitle>
-                <DialogDescription>
-                  Update how long messages are kept in the "
-                  {queueToUpdate?.name}" queue before being automatically
-                  deleted.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <label
-                    htmlFor="updatedRetentionPeriod"
-                    className="text-right"
-                  >
-                    Retention Period
-                  </label>
-                  <div className="col-span-3">
-                    <Input
-                      id="updatedRetentionPeriod"
-                      type="number"
-                      placeholder="In seconds (leave empty for no expiry)"
-                      value={updatedRetentionPeriod}
-                      onChange={(e) =>
-                        setUpdatedRetentionPeriod(e.target.value)
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Time in seconds before messages are automatically deleted.
-                      Leave empty to keep messages indefinitely.
-                    </p>
-                  </div>
-                </div>
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-              </div>
-              <DialogFooter>
-                <Button onClick={updateRetentionPolicy}>
-                  Update Retention Policy
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
           {/* Queue Polling Section */}
           <Card className="mb-6">
             <CardHeader>
@@ -808,6 +871,16 @@ export default function Home() {
                           >
                             Edit Retention
                           </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => {
+                              setQueueToDelete(queue);
+                              setDeleteQueueDialogOpen(true);
+                            }}
+                          >
+                            Purge & Delete
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -816,6 +889,34 @@ export default function Home() {
               </Table>
             </CardContent>
           </Card>
+
+          {/* Delete Queue Dialog */}
+          <Dialog
+            open={deleteQueueDialogOpen}
+            onOpenChange={setDeleteQueueDialogOpen}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Purge & Delete Queue</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to purge and delete the queue "
+                  {queueToDelete?.name}"? This will permanently remove all
+                  messages and the queue itself. This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter className="gap-2 sm:gap-0">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteQueueDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={purgeAndDeleteQueue}>
+                  Purge & Delete
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           <Card>
             <CardHeader>
@@ -851,6 +952,30 @@ Content-Type: application/json
                   </h3>
                   <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
                     {`DELETE /api/queues/{queue-slug}/messages?messageId={message-id}`}
+                  </code>
+                </div>
+                <div>
+                  <h3 className="font-bold mb-2">
+                    Purge all messages from a queue
+                  </h3>
+                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
+                    {`POST /api/queues/{queue-slug}/purge`}
+                  </code>
+                </div>
+                <div>
+                  <h3 className="font-bold mb-2">Delete a queue</h3>
+                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
+                    {`DELETE /api/queues/{queue-slug}`}
+                  </code>
+                </div>
+                <div>
+                  <h3 className="font-bold mb-2">Purge & Delete a queue</h3>
+                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
+                    {`# Step 1: Purge all messages
+POST /api/queues/{queue-slug}/purge
+
+# Step 2: Delete the queue
+DELETE /api/queues/{queue-slug}`}
                   </code>
                 </div>
               </div>
