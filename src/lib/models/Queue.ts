@@ -13,6 +13,11 @@ const QueueSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  retentionPeriod: {
+    type: Number,
+    default: null, // null means messages are kept indefinitely
+    description: 'Retention period in seconds. Null means keep indefinitely.',
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -42,6 +47,11 @@ const MessageSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  expiresAt: {
+    type: Date,
+    default: null, // null means the document won't expire
+    index: { expires: 0 } // TTL index that automatically removes documents when expiresAt is reached
+  }
 });
 
 // Create or retrieve models

@@ -2,7 +2,11 @@ import { Message } from '../models/Queue';
 import mongoose from 'mongoose';
 
 export class MessageRepository {
-  async create(data: { queueId: mongoose.Types.ObjectId | string; body: string }) {
+  async create(data: { 
+    queueId: mongoose.Types.ObjectId | string; 
+    body: string;
+    expiresAt?: Date | null;
+  }) {
     return Message.create(data);
   }
 

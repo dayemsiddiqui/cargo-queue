@@ -5,7 +5,7 @@ export class QueueRepository {
     return Queue.findOne({ slug });
   }
 
-  async create(data: { name: string; slug: string }) {
+  async create(data: { name: string; slug: string; retentionPeriod?: number | null }) {
     return Queue.create(data);
   }
 
@@ -17,7 +17,7 @@ export class QueueRepository {
     return Queue.findById(id);
   }
 
-  async update(id: string, data: Partial<{ name: string; slug: string }>) {
+  async update(id: string, data: Partial<{ name: string; slug: string; retentionPeriod?: number | null }>) {
     return Queue.findByIdAndUpdate(id, data, { new: true });
   }
 

@@ -1,6 +1,7 @@
 import { queueRepository } from '@/lib/repositories/QueueRepository';
 import { messageRepository } from '@/lib/repositories/MessageRepository';
 import { ApiError } from '@/lib/errors/ApiError';
+import { Message } from '@/lib/models/Queue';
 
 export class QueueService {
   async findAllQueues() {
@@ -15,7 +16,38 @@ export class QueueService {
     return queue;
   }
 
-  async createQueue(name: string) {
+  async updateQueueRetentionPolicy(slug: string, retentionPeriod: number | null) {
+    const queue = await queueRepository.findBySlug(slug);
+    if (!queue) {
+      throw ApiError.notFound(`Queue with slug '${slug}' not found`);
+    }
+    
+    // Update the retention policy
+    const updatedQueue = await queueRepository.update(queue._id, { retentionPeriod });
+    
+    // Update expiry for existing messages if retention policy is changed
+    if (retentionPeriod !== null) {
+      // Calculate new expiry date based on retentionPeriod
+      const now = Date.now();
+      const newExpiryDate = new Date(now + retentionPeriod * 1000);
+      
+      // Update all messages in this queue
+      await Message.updateMany(
+        { queueId: queue._id },
+        { expiresAt: newExpiryDate }
+      );
+    } else {
+      // If retention policy is removed, clear expiry dates
+      await Message.updateMany(
+        { queueId: queue._id },
+        { expiresAt: null }
+      );
+    }
+    
+    return updatedQueue;
+  }
+
+  async createQueue(name: string, retentionPeriod?: number | null) {
     // Generate slug from name
     const slug = name
       .toLowerCase()
@@ -29,7 +61,7 @@ export class QueueService {
     }
     
     // Create a new queue
-    return queueRepository.create({ name, slug });
+    return queueRepository.create({ name, slug, retentionPeriod });
   }
 
   async sendMessage(slug: string, messageBody: string) {
@@ -39,10 +71,17 @@ export class QueueService {
       throw ApiError.notFound(`Queue not found`);
     }
 
+    // Calculate expiresAt if retention policy is set
+    let expiresAt = null;
+    if (queue.retentionPeriod) {
+      expiresAt = new Date(Date.now() + queue.retentionPeriod * 1000);
+    }
+
     // Create a new message
     const newMessage = await messageRepository.create({
       queueId: queue._id,
       body: messageBody,
+      expiresAt,
     });
 
     return newMessage;
