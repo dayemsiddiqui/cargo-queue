@@ -1,5 +1,6 @@
-import { Queue, Message } from '@/lib/models/Queue';
 import { NextRequest, NextResponse } from 'next/server';
+import { queueRepository } from '@/lib/repositories/QueueRepository';
+import { messageRepository } from '@/lib/repositories/MessageRepository';
 
 // POST /api/queues/[slug]/messages - Send a message to a queue
 export async function POST(
@@ -19,8 +20,8 @@ export async function POST(
       );
     }
 
-    // Find the queue
-    const queue = await Queue.findOne({ slug });
+    // Find the queue using repository
+    const queue = await queueRepository.findBySlug(slug);
     if (!queue) {
       return NextResponse.json(
         { error: 'Queue not found' },
@@ -28,8 +29,8 @@ export async function POST(
       );
     }
 
-    // Create a new message
-    const newMessage = await Message.create({
+    // Create a new message using repository
+    const newMessage = await messageRepository.create({
       queueId: queue._id,
       body: message,
     });
@@ -49,8 +50,8 @@ export async function GET(
     // Use the updated Next.js 15 approach to access dynamic route params
     const { slug } = await params;
     
-    // Find the queue
-    const queue = await Queue.findOne({ slug });
+    // Find the queue using repository
+    const queue = await queueRepository.findBySlug(slug);
     if (!queue) {
       return NextResponse.json(
         { error: 'Queue not found' },
@@ -58,11 +59,8 @@ export async function GET(
       );
     }
 
-    // Simply get the first unprocessed message without using visibilityTimeout
-    const message = await Message.findOne({
-      queueId: queue._id,
-      processed: false
-    }).sort({ createdAt: 1 }); // Get the oldest message first
+    // Get the oldest unprocessed message using repository
+    const message = await messageRepository.findOldestUnprocessed(queue._id);
 
     if (!message) {
       return NextResponse.json({ message: null });
@@ -92,12 +90,8 @@ export async function DELETE(
       );
     }
 
-    // Mark message as processed
-    const message = await Message.findByIdAndUpdate(
-      messageId,
-      { processed: true },
-      { new: true }
-    );
+    // Mark message as processed using repository
+    const message = await messageRepository.markAsProcessed(messageId);
 
     if (!message) {
       return NextResponse.json(

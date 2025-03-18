@@ -32,7 +32,7 @@ This approach uses Docker Compose to set up both the application and MongoDB:
    ```bash
    docker-compose up
    ```
-3. Run the main app via ```npm run dev```
+3. Run the main app via `npm run dev`
 
 To stop the services:
 
@@ -65,3 +65,42 @@ curl -X GET "http://localhost:3000/api/queues/{queue-slug}/messages"
 ```bash
 curl -X DELETE "http://localhost:3000/api/queues/{queue-slug}/messages?messageId={message-id}"
 ```
+
+## Testing
+
+The project includes both unit and integration tests for the backend API endpoints and database models. The tests are written using Jest and follow best practices for testing Next.js API routes and MongoDB models.
+
+### Running Tests
+
+To run all tests:
+
+```bash
+npm test
+```
+
+### Test Structure
+
+The tests are organized into the following directories:
+
+- `src/__tests__/backend/`: Contains all backend tests
+  - `Queue.test.ts`: Tests for Queue and Message models
+  - `QueuesApi.test.ts`: Tests for queue-related API endpoints
+  - `MessagesApi.test.ts`: Tests for message-related API endpoints
+
+### Test Coverage
+
+The test suite covers:
+
+- Database models
+
+  - Creating queues and messages
+  - Validating required fields
+  - Handling duplicate entries
+  - Processing messages
+
+- API Endpoints
+  - Creating queues
+  - Listing queues
+  - Sending messages to queues
+  - Polling messages from queues
+  - Acknowledging messages
