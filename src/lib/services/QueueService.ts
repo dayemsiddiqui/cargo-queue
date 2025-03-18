@@ -1,8 +1,18 @@
 import { queueRepository } from '@/lib/repositories/QueueRepository';
 import { messageRepository } from '@/lib/repositories/MessageRepository';
 import { ApiError } from '@/lib/errors/ApiError';
-import { Message } from '@/lib/models/Queue';
-import { Queue } from '@/lib/models/Queue';
+import type { IMessage } from '@/lib/models/types';
+import { Queue, Message } from '@/lib/models/Queue';
+
+// Define the message interface based on the schema
+interface MessageInput {
+  queueId: string;
+  body: string;
+  processed?: boolean;
+  visibilityTimeout?: Date | null;
+  createdAt?: Date;
+  expiresAt?: Date | null;
+}
 
 export class QueueService {
   async findAllQueues() {
@@ -79,20 +89,29 @@ export class QueueService {
       throw ApiError.notFound(`Queue not found`);
     }
 
+    return this.enqueueMessage(queue._id.toString(), messageBody);
+  }
+
+  async enqueueMessage(queueId: string, messageBody: string | IMessage): Promise<IMessage> {
+    const queue = await Queue.findById(queueId);
+    if (!queue) {
+      throw ApiError.notFound(`Queue ${queueId} not found`);
+    }
+
     // Calculate expiresAt if retention policy is set
     let expiresAt = null;
     if (queue.retentionPeriod) {
       expiresAt = new Date(Date.now() + queue.retentionPeriod * 1000);
     }
 
-    // Create a new message
-    const newMessage = await messageRepository.create({
+    // Handle both string and Message input
+    const body = typeof messageBody === 'string' ? messageBody : messageBody.body;
+
+    return messageRepository.create({
       queueId: queue._id,
-      body: messageBody,
+      body,
       expiresAt,
     });
-
-    return newMessage;
   }
 
   async pollMessage(slug: string) {
@@ -160,6 +179,11 @@ export class QueueService {
       success: true,
       message: 'All queues and messages have been purged and deleted'
     };
+  }
+
+  async queueExists(queueId: string): Promise<boolean> {
+    const queue = await Queue.findById(queueId);
+    return queue !== null;
   }
 }
 

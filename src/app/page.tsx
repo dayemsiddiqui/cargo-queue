@@ -39,6 +39,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
+import { Plus, Send, Trash2 } from "lucide-react";
 import CreateQueueDialog from "@/components/queues/CreateQueueDialog";
 import UpdateRetentionDialog from "@/components/queues/UpdateRetentionDialog";
 import DeleteQueueDialog from "@/components/queues/DeleteQueueDialog";
@@ -48,6 +49,8 @@ import QueuePollingSection from "@/components/messages/QueuePollingSection";
 import QueueTable from "@/components/queues/QueueTable";
 import ApiUsageGuide from "@/components/ApiUsageGuide";
 import { Queue, Message } from "@/types/queue";
+import { Topic } from "@/lib/models/Topic";
+import CreateTopicDialog from "@/components/topics/CreateTopicDialog";
 
 // Polling interval in milliseconds
 const POLLING_INTERVAL = 5000;
@@ -84,6 +87,19 @@ export default function Home() {
   const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastPollTimeRef = useRef<number>(0);
 
+  // Topics states
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [isCreateTopicDialogOpen, setIsCreateTopicDialogOpen] = useState(false);
+  const [isAddQueueDialogOpen, setIsAddQueueDialogOpen] = useState(false);
+  const [messageInputs, setMessageInputs] = useState<Record<string, string>>(
+    {}
+  );
+  const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
+  const [selectedQueue, setSelectedQueue] = useState("");
+  const [isTopicLoading, setIsTopicLoading] = useState<Record<string, boolean>>(
+    {}
+  );
+
   // Fetch queues
   const fetchQueues = async () => {
     try {
@@ -95,6 +111,28 @@ export default function Home() {
       console.error("Failed to fetch queues:", err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Fetch topics
+  const fetchTopics = async () => {
+    try {
+      const response = await fetch("/api/topics");
+      const data = await response.json();
+      // Convert JSON data to Topic instances
+      const topicInstances = data.map((topicData: any) =>
+        Topic.fromJSON(topicData)
+      );
+      setTopics(topicInstances);
+
+      // Initialize message inputs for each topic
+      const initialMessageInputs: Record<string, string> = {};
+      topicInstances.forEach((topic: Topic) => {
+        initialMessageInputs[topic.getName()] = "";
+      });
+      setMessageInputs(initialMessageInputs);
+    } catch (error) {
+      console.error("Error fetching topics:", error);
     }
   };
 
@@ -420,22 +458,127 @@ export default function Home() {
     return `${baseUrl}/api/queues/${slug}/messages`;
   };
 
-  // Load queues on component mount
-  useEffect(() => {
-    fetchQueues();
-  }, []);
+  // Topic functions
+  const handleCreateTopic = async (newTopic: Topic) => {
+    try {
+      const response = await fetch("/api/topics", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(newTopic),
+      });
 
-  // Clean up polling interval on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
+      if (!response.ok) {
+        throw new Error("Failed to create topic");
       }
-      if (progressIntervalRef.current) {
-        clearInterval(progressIntervalRef.current);
+
+      await fetchTopics();
+      setIsCreateTopicDialogOpen(false);
+      toast.success("Topic created successfully");
+    } catch (error) {
+      console.error("Error creating topic:", error);
+      toast.error("Failed to create topic");
+    }
+  };
+
+  const handleDeleteTopic = async (topicName: string) => {
+    if (!confirm("Are you sure you want to delete this topic?")) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/topics/${topicName}`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to delete topic");
       }
-    };
-  }, []);
+
+      await fetchTopics();
+      toast.success("Topic deleted successfully");
+    } catch (error) {
+      console.error("Error deleting topic:", error);
+      toast.error("Failed to delete topic");
+    }
+  };
+
+  const handleAddQueue = async () => {
+    if (!selectedTopic || !selectedQueue) return;
+
+    try {
+      const response = await fetch(`/api/topics/${selectedTopic}/queues`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ queueId: selectedQueue }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to add queue");
+      }
+
+      await fetchTopics();
+      setIsAddQueueDialogOpen(false);
+      setSelectedQueue("");
+      toast.success("Queue added to topic");
+    } catch (error) {
+      console.error("Error adding queue:", error);
+      toast.error("Failed to add queue to topic");
+    }
+  };
+
+  const handleRemoveQueue = async (topicName: string, queueId: string) => {
+    try {
+      const response = await fetch(
+        `/api/topics/${topicName}/queues?queueId=${queueId}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to remove queue");
+      }
+
+      await fetchTopics();
+      toast.success("Queue removed from topic");
+    } catch (error) {
+      console.error("Error removing queue:", error);
+      toast.error("Failed to remove queue from topic");
+    }
+  };
+
+  const handlePublishMessage = async (topicName: string) => {
+    const message = messageInputs[topicName];
+    if (!message) return;
+
+    setIsTopicLoading((prev) => ({ ...prev, [topicName]: true }));
+
+    try {
+      const response = await fetch(`/api/topics/${topicName}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to publish message");
+      }
+
+      setMessageInputs((prev) => ({ ...prev, [topicName]: "" }));
+      toast.success("Message published successfully");
+    } catch (error) {
+      console.error("Error publishing message:", error);
+      toast.error("Failed to publish message");
+    } finally {
+      setIsTopicLoading((prev) => ({ ...prev, [topicName]: false }));
+    }
+  };
 
   // Purge and delete ALL queues
   const purgeAndDeleteAllQueues = async () => {
@@ -469,6 +612,24 @@ export default function Home() {
   const handleOpenPurgeAllQueues = () => {
     setPurgeAllQueuesDialogOpen(true);
   };
+
+  // Load queues and topics on component mount
+  useEffect(() => {
+    fetchQueues();
+    fetchTopics();
+  }, []);
+
+  // Clean up polling interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+      }
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="container mx-auto py-10">
@@ -512,17 +673,6 @@ export default function Home() {
         <div className="flex justify-center items-center h-64">
           <p>Loading queues...</p>
         </div>
-      ) : queues.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center p-6">
-              <h3 className="text-lg font-medium">No queues found</h3>
-              <p className="text-muted-foreground mt-2">
-                Create your first queue to get started
-              </p>
-            </div>
-          </CardContent>
-        </Card>
       ) : (
         <div className="grid gap-6">
           {/* Queue Polling Section */}
@@ -532,24 +682,215 @@ export default function Home() {
           />
 
           {/* Queues Table */}
-          <QueueTable
-            queues={queues}
-            getQueueUrl={getQueueUrl}
-            onOpenUpdateRetention={(queue: Queue) => {
-              setQueueToUpdate(queue);
-              setUpdateRetentionDialogOpen(true);
-            }}
-            onOpenDeleteQueue={(queue: Queue) => {
-              setQueueToDelete(queue);
-              setDeleteQueueDialogOpen(true);
-            }}
-            onOpenPurgeAllQueues={handleOpenPurgeAllQueues}
-          />
+          {queues.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6">
+                <div className="text-center p-6">
+                  <h3 className="text-lg font-medium">No queues found</h3>
+                  <p className="text-muted-foreground mt-2">
+                    Create your first queue to get started
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <QueueTable
+              queues={queues}
+              getQueueUrl={getQueueUrl}
+              onOpenUpdateRetention={(queue: Queue) => {
+                setQueueToUpdate(queue);
+                setUpdateRetentionDialogOpen(true);
+              }}
+              onOpenDeleteQueue={(queue: Queue) => {
+                setQueueToDelete(queue);
+                setDeleteQueueDialogOpen(true);
+              }}
+              onOpenPurgeAllQueues={handleOpenPurgeAllQueues}
+            />
+          )}
+
+          {/* Topics Section */}
+          <div className="mt-8">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold">Topics</h2>
+              <Button onClick={() => setIsCreateTopicDialogOpen(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Topic
+              </Button>
+            </div>
+
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Topic Name</TableHead>
+                    <TableHead>Target Queues</TableHead>
+                    <TableHead>Publish Message</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {topics.map((topic) => (
+                    <TableRow key={topic.getName()}>
+                      <TableCell className="font-medium">
+                        {topic.getName()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-1">
+                          {topic.getTargetQueueIds().map((queueId) => {
+                            const queue = queues.find((q) => q._id === queueId);
+                            return (
+                              <div
+                                key={queueId}
+                                className="flex items-center bg-gray-100 dark:bg-gray-700 rounded px-2 py-1 text-xs"
+                              >
+                                {queue?.name || queueId}
+                                <button
+                                  onClick={() =>
+                                    handleRemoveQueue(topic.getName(), queueId)
+                                  }
+                                  className="ml-1 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setSelectedTopic(topic.getName());
+                              setIsAddQueueDialogOpen(true);
+                            }}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            Add
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Input
+                            value={messageInputs[topic.getName()] || ""}
+                            onChange={(e) =>
+                              setMessageInputs((prev) => ({
+                                ...prev,
+                                [topic.getName()]: e.target.value,
+                              }))
+                            }
+                            placeholder="Enter message"
+                            disabled={isTopicLoading[topic.getName()]}
+                            className="h-8"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() =>
+                              handlePublishMessage(topic.getName())
+                            }
+                            disabled={
+                              isTopicLoading[topic.getName()] ||
+                              !messageInputs[topic.getName()]
+                            }
+                          >
+                            <Send className="w-3 h-3 mr-1" />
+                            {isTopicLoading[topic.getName()]
+                              ? "Sending..."
+                              : "Send"}
+                          </Button>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleDeleteTopic(topic.getName())}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+
+                  {topics.length === 0 && (
+                    <TableRow>
+                      <TableCell
+                        colSpan={4}
+                        className="text-center py-4 text-gray-500"
+                      >
+                        No topics found. Create one to get started.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
 
           {/* API Usage Guide */}
           <ApiUsageGuide />
         </div>
       )}
+
+      <CreateTopicDialog
+        open={isCreateTopicDialogOpen}
+        onOpenChange={setIsCreateTopicDialogOpen}
+        onCreateTopic={handleCreateTopic}
+      />
+
+      <Dialog
+        open={isAddQueueDialogOpen}
+        onOpenChange={setIsAddQueueDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Target Queue</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Select Queue
+              </label>
+              <select
+                value={selectedQueue}
+                onChange={(e) => setSelectedQueue(e.target.value)}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">Select a queue...</option>
+                {selectedTopic &&
+                  queues
+                    .filter((queue) => {
+                      const topic = topics.find(
+                        (t) => t.getName() === selectedTopic
+                      );
+                      return (
+                        topic && !topic.getTargetQueueIds().includes(queue._id)
+                      );
+                    })
+                    .map((queue) => (
+                      <option key={queue._id} value={queue._id}>
+                        {queue.name}
+                      </option>
+                    ))}
+              </select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsAddQueueDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleAddQueue} disabled={!selectedQueue}>
+              Add Queue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

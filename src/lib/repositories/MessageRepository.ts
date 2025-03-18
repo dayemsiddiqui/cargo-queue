@@ -1,20 +1,21 @@
-import { Message } from '../models/Queue';
-import mongoose from 'mongoose';
+import { Message } from '@/lib/models/Queue';
+import type { IMessage } from '@/lib/models/types';
+import { Types } from 'mongoose';
 
-export class MessageRepository {
-  async create(data: { 
-    queueId: mongoose.Types.ObjectId | string; 
-    body: string;
-    expiresAt?: Date | null;
-  }) {
-    return Message.create(data);
+class MessageRepository {
+  async create(messageData: Partial<IMessage>) {
+    return Message.create(messageData);
   }
 
-  async findOldestUnprocessed(queueId: mongoose.Types.ObjectId | string) {
+  async findOldestUnprocessed(queueId: string | Types.ObjectId) {
     return Message.findOne({
       queueId,
-      processed: false
-    }).sort({ createdAt: 1 }); // Get the oldest message first
+      processed: false,
+      $or: [
+        { visibilityTimeout: null },
+        { visibilityTimeout: { $lte: new Date() } }
+      ]
+    }).sort({ createdAt: 1 });
   }
 
   async markAsProcessed(messageId: string) {
@@ -29,10 +30,9 @@ export class MessageRepository {
     return Message.findById(id);
   }
 
-  async deleteByQueueId(queueId: mongoose.Types.ObjectId | string) {
+  async deleteByQueueId(queueId: string | Types.ObjectId) {
     return Message.deleteMany({ queueId });
   }
 }
 
-// Singleton instance
 export const messageRepository = new MessageRepository(); 
