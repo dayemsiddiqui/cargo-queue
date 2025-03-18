@@ -41,7 +41,7 @@ describe('QueueRepository', () => {
       await expect(queueRepository.create({
         name: 'Test Queue',
         slug: 'test-queue-2'
-      })).rejects.toThrow();
+      })).rejects.toThrow(/duplicate key error/);
     });
 
     it('should throw an error when creating a queue with a duplicate slug', async () => {
@@ -55,7 +55,7 @@ describe('QueueRepository', () => {
       await expect(queueRepository.create({
         name: 'Test Queue 2',
         slug: 'test-queue'
-      })).rejects.toThrow();
+      })).rejects.toThrow(/duplicate key error/);
     });
   });
 

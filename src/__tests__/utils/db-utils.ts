@@ -33,6 +33,7 @@ const QueueSchema = new Schema({
   },
 });
 
+
 const MessageSchema = new Schema({
   queueId: {
     type: Schema.Types.ObjectId,
@@ -73,8 +74,11 @@ export const connect = async () => {
     });
 
     // Create models
-    mongoose.model('Queue', QueueSchema);
-    mongoose.model('Message', MessageSchema);
+    const Queue = mongoose.model('Queue', QueueSchema);
+    const Message = mongoose.model('Message', MessageSchema);
+    
+    // Create indexes in the background
+    await Queue.createIndexes();
   } catch (error) {
     console.error('Failed to connect to in-memory MongoDB', error);
     throw error;
