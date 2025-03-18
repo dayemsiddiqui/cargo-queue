@@ -19,12 +19,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Queue } from "@/types/queue";
+import { Trash2 } from "lucide-react";
 
 interface QueueTableProps {
   queues: Queue[];
   getQueueUrl: (slug: string) => string;
   onOpenUpdateRetention: (queue: Queue) => void;
   onOpenDeleteQueue: (queue: Queue) => void;
+  onOpenPurgeAllQueues: () => void;
 }
 
 export default function QueueTable({
@@ -32,6 +34,7 @@ export default function QueueTable({
   getQueueUrl,
   onOpenUpdateRetention,
   onOpenDeleteQueue,
+  onOpenPurgeAllQueues,
 }: QueueTableProps) {
   const formatRetentionPeriod = (retentionPeriod: number | null) => {
     if (
@@ -55,11 +58,24 @@ export default function QueueTable({
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Your Queues</CardTitle>
-        <CardDescription>
-          Manage your message queues and their endpoints
-        </CardDescription>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div>
+          <CardTitle>Your Queues</CardTitle>
+          <CardDescription>
+            Manage your message queues and their endpoints
+          </CardDescription>
+        </div>
+        {queues.length > 0 && (
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={onOpenPurgeAllQueues}
+            className="flex items-center gap-1"
+          >
+            <Trash2 className="h-4 w-4" />
+            Purge & Delete All Queues
+          </Button>
+        )}
       </CardHeader>
       <CardContent>
         <Table>

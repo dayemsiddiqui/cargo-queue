@@ -3,10 +3,33 @@ import { queueRepository } from '@/lib/repositories/QueueRepository';
 import { messageRepository } from '@/lib/repositories/MessageRepository';
 import { ApiError } from '@/lib/errors/ApiError';
 import mongoose from 'mongoose';
+import { Queue, Message } from '@/lib/models/Queue';
+import { queueService } from '../QueueService';
 
 // Mocking dependencies
 jest.mock('@/lib/repositories/QueueRepository');
 jest.mock('@/lib/repositories/MessageRepository');
+
+// Mock out the mongoose models
+jest.mock('@/lib/models/Queue', () => ({
+  Queue: {
+    findOne: jest.fn(),
+    create: jest.fn(),
+    find: jest.fn(),
+    findById: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
+    findByIdAndDelete: jest.fn(),
+    deleteMany: jest.fn()
+  },
+  Message: {
+    create: jest.fn(),
+    findOne: jest.fn(),
+    findById: jest.fn(),
+    findByIdAndUpdate: jest.fn(),
+    deleteMany: jest.fn(),
+    updateMany: jest.fn()
+  }
+}));
 
 describe('QueueService', () => {
   let queueService: QueueService;
@@ -120,6 +143,29 @@ describe('QueueService', () => {
       await expect(queueService.deleteQueue('non-existent')).rejects.toThrow(ApiError);
       expect(queueRepository.findBySlug).toHaveBeenCalledWith('non-existent');
       expect(queueRepository.delete).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('purgeAndDeleteAllQueues', () => {
+    it('should delete all messages and queues', async () => {
+      // Mock Message.deleteMany to return a successful deletion
+      (Message.deleteMany as jest.Mock).mockResolvedValue({ deletedCount: 10 });
+      
+      // Mock Queue.deleteMany to return a successful deletion
+      (Queue.deleteMany as jest.Mock).mockResolvedValue({ deletedCount: 3 });
+      
+      // Call the service method
+      const result = await queueService.purgeAndDeleteAllQueues();
+      
+      // Verify the result
+      expect(result).toEqual({
+        success: true,
+        message: 'All queues and messages have been purged and deleted'
+      });
+      
+      // Verify the correct methods were called
+      expect(Message.deleteMany).toHaveBeenCalledWith({});
+      expect(Queue.deleteMany).toHaveBeenCalledWith({});
     });
   });
 }); 

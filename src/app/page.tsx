@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import CreateQueueDialog from "@/components/queues/CreateQueueDialog";
 import UpdateRetentionDialog from "@/components/queues/UpdateRetentionDialog";
 import DeleteQueueDialog from "@/components/queues/DeleteQueueDialog";
+import PurgeAllQueuesDialog from "@/components/queues/PurgeAllQueuesDialog";
 import PostMessageDialog from "@/components/messages/PostMessageDialog";
 import QueuePollingSection from "@/components/messages/QueuePollingSection";
 import QueueTable from "@/components/queues/QueueTable";
@@ -62,6 +63,8 @@ export default function Home() {
   const [updateRetentionDialogOpen, setUpdateRetentionDialogOpen] =
     useState<boolean>(false);
   const [deleteQueueDialogOpen, setDeleteQueueDialogOpen] =
+    useState<boolean>(false);
+  const [purgeAllQueuesDialogOpen, setPurgeAllQueuesDialogOpen] =
     useState<boolean>(false);
 
   // Queue update/delete states
@@ -434,6 +437,39 @@ export default function Home() {
     };
   }, []);
 
+  // Purge and delete ALL queues
+  const purgeAndDeleteAllQueues = async () => {
+    try {
+      const response = await fetch(`/api/queues/purge-all`, {
+        method: "POST",
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to purge and delete all queues");
+      }
+
+      // Clear the queues from the UI
+      setQueues([]);
+
+      // If we were polling any queue, stop polling
+      if (isPolling) {
+        stopPolling();
+      }
+
+      setPurgeAllQueuesDialogOpen(false);
+      toast.success("All queues have been purged and deleted");
+    } catch (err: any) {
+      console.error("Failed to purge and delete all queues:", err);
+      toast.error(err.message || "Failed to purge and delete all queues");
+    }
+  };
+
+  // Handle opening the purge all queues dialog
+  const handleOpenPurgeAllQueues = () => {
+    setPurgeAllQueuesDialogOpen(true);
+  };
+
   return (
     <div className="container mx-auto py-10">
       <div className="flex justify-between items-center mb-8">
@@ -462,6 +498,12 @@ export default function Home() {
             onOpenChange={setDeleteQueueDialogOpen}
             queueToDelete={queueToDelete}
             onDeleteQueue={purgeAndDeleteQueue}
+          />
+          <PurgeAllQueuesDialog
+            open={purgeAllQueuesDialogOpen}
+            onOpenChange={setPurgeAllQueuesDialogOpen}
+            onPurgeAllQueues={purgeAndDeleteAllQueues}
+            queueCount={queues.length}
           />
         </div>
       </div>
@@ -501,6 +543,7 @@ export default function Home() {
               setQueueToDelete(queue);
               setDeleteQueueDialogOpen(true);
             }}
+            onOpenPurgeAllQueues={handleOpenPurgeAllQueues}
           />
 
           {/* API Usage Guide */}

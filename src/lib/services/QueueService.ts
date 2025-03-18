@@ -148,6 +148,19 @@ export class QueueService {
       message: `Queue '${slug}' deleted successfully`
     };
   }
+
+  async purgeAndDeleteAllQueues() {
+    // First delete all messages across all queues
+    await Message.deleteMany({});
+    
+    // Then delete all queues
+    await Queue.deleteMany({});
+    
+    return {
+      success: true,
+      message: 'All queues and messages have been purged and deleted'
+    };
+  }
 }
 
 // Create a singleton instance
