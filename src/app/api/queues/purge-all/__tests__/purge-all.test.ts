@@ -51,7 +51,7 @@ describe('Purge All Queues API', () => {
   it('should handle API errors', async () => {
     // Mock purgeAndDeleteAllQueues to throw an API error
     (queueService.purgeAndDeleteAllQueues as jest.Mock).mockRejectedValue(
-      new ApiError(500, 'Internal server error')
+      new ApiError('Internal server error', 500)
     );
 
     // Call the handler
