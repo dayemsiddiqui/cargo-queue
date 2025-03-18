@@ -39,26 +39,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Check, RefreshCw, X } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
-
-// Queue type
-interface Queue {
-  _id: string;
-  name: string;
-  slug: string;
-  createdAt: string;
-  retentionPeriod: number | null;
-}
-
-// Message type
-interface Message {
-  _id: string;
-  body: string;
-  processed: boolean;
-  createdAt: string;
-}
+import CreateQueueDialog from "@/components/queues/CreateQueueDialog";
+import UpdateRetentionDialog from "@/components/queues/UpdateRetentionDialog";
+import DeleteQueueDialog from "@/components/queues/DeleteQueueDialog";
+import PostMessageDialog from "@/components/messages/PostMessageDialog";
+import QueuePollingSection from "@/components/messages/QueuePollingSection";
+import QueueTable from "@/components/queues/QueueTable";
+import ApiUsageGuide from "@/components/ApiUsageGuide";
+import { Queue, Message } from "@/types/queue";
 
 // Polling interval in milliseconds
 const POLLING_INTERVAL = 5000;
@@ -66,20 +54,18 @@ const POLLING_INTERVAL = 5000;
 export default function Home() {
   const [queues, setQueues] = useState<Queue[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [newQueueName, setNewQueueName] = useState<string>("");
-  const [dialogOpen, setDialogOpen] = useState<boolean>(false);
-  const [messageDialogOpen, setMessageDialogOpen] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedQueue, setSelectedQueue] = useState<string>("");
-  const [message, setMessage] = useState<string>("");
-  const [retentionPeriod, setRetentionPeriod] = useState<string>("");
+
+  // Dialog states
+  const [messageDialogOpen, setMessageDialogOpen] = useState<boolean>(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState<boolean>(false);
   const [updateRetentionDialogOpen, setUpdateRetentionDialogOpen] =
     useState<boolean>(false);
-  const [queueToUpdate, setQueueToUpdate] = useState<Queue | null>(null);
-  const [updatedRetentionPeriod, setUpdatedRetentionPeriod] =
-    useState<string>("");
   const [deleteQueueDialogOpen, setDeleteQueueDialogOpen] =
     useState<boolean>(false);
+
+  // Queue update/delete states
+  const [queueToUpdate, setQueueToUpdate] = useState<Queue | null>(null);
   const [queueToDelete, setQueueToDelete] = useState<Queue | null>(null);
 
   // Polling states
@@ -110,7 +96,7 @@ export default function Home() {
   };
 
   // Create a new queue
-  const createQueue = async () => {
+  const createQueue = async (name: string, retentionPeriod: string) => {
     try {
       const response = await fetch("/api/queues", {
         method: "POST",
@@ -118,7 +104,7 @@ export default function Home() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: newQueueName,
+          name,
           retentionPeriod:
             retentionPeriod === "" ? null : Number(retentionPeriod),
         }),
@@ -130,9 +116,7 @@ export default function Home() {
         throw new Error(data.error || "Failed to create queue");
       }
 
-      setDialogOpen(false);
-      setNewQueueName("");
-      setRetentionPeriod("");
+      setCreateDialogOpen(false);
       fetchQueues();
       toast.success("Queue created successfully!");
     } catch (err: any) {
@@ -225,7 +209,7 @@ export default function Home() {
   };
 
   // Update queue retention policy
-  const updateRetentionPolicy = async () => {
+  const updateRetentionPolicy = async (updatedRetentionPeriod: string) => {
     if (!queueToUpdate) return;
 
     try {
@@ -268,7 +252,6 @@ export default function Home() {
 
       setUpdateRetentionDialogOpen(false);
       setQueueToUpdate(null);
-      setUpdatedRetentionPeriod("");
 
       // Force a complete refresh of queues
       await fetchQueues();
@@ -282,7 +265,7 @@ export default function Home() {
   };
 
   // Send a message to the selected queue
-  const sendMessage = async () => {
+  const sendMessage = async (selectedQueue: string, message: string) => {
     if (!selectedQueue || !message.trim()) {
       setError("Both queue and message are required");
       return;
@@ -310,8 +293,6 @@ export default function Home() {
       }
 
       setMessageDialogOpen(false);
-      setMessage("");
-      setSelectedQueue("");
       toast.success("Message sent successfully!");
     } catch (err: any) {
       setError(err.message);
@@ -458,193 +439,30 @@ export default function Home() {
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Cargo Queue</h1>
         <div className="flex gap-2">
-          <Dialog open={messageDialogOpen} onOpenChange={setMessageDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" disabled={queues.length === 0}>
-                Post Message
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Post a message to a queue</DialogTitle>
-                <DialogDescription>
-                  Select a queue and enter your message to send.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <label htmlFor="queue" className="text-right">
-                    Queue
-                  </label>
-                  <div className="col-span-3">
-                    <Select
-                      onValueChange={setSelectedQueue}
-                      value={selectedQueue}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a queue" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {queues.map((queue) => (
-                          <SelectItem key={queue._id} value={queue._id}>
-                            {queue.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <label htmlFor="message" className="text-right">
-                    Message
-                  </label>
-                  <Textarea
-                    id="message"
-                    className="col-span-3"
-                    placeholder="Enter your message"
-                    value={message}
-                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                      setMessage(e.target.value)
-                    }
-                  />
-                </div>
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-              </div>
-              <DialogFooter>
-                <Button
-                  onClick={sendMessage}
-                  disabled={!selectedQueue || !message.trim()}
-                >
-                  Send Message
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button>Create Queue</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create a new queue</DialogTitle>
-                <DialogDescription>
-                  Enter a name for your new queue and optionally set a retention
-                  period. Messages will be automatically deleted after the
-                  retention period expires.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <label htmlFor="name" className="text-right">
-                    Queue Name
-                  </label>
-                  <Input
-                    id="name"
-                    className="col-span-3"
-                    placeholder="Queue name"
-                    value={newQueueName}
-                    onChange={(e) => setNewQueueName(e.target.value)}
-                  />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <label htmlFor="retentionPeriod" className="text-right">
-                    Retention Period
-                  </label>
-                  <div className="col-span-3">
-                    <Input
-                      id="retentionPeriod"
-                      type="number"
-                      placeholder="In seconds (leave empty for no expiry)"
-                      value={retentionPeriod}
-                      onChange={(e) => setRetentionPeriod(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Time in seconds before messages are automatically deleted.
-                      Leave empty to keep messages indefinitely.
-                    </p>
-                  </div>
-                </div>
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-              </div>
-              <DialogFooter>
-                <Button onClick={createQueue} disabled={!newQueueName.trim()}>
-                  Create Queue
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Dialog
+          <PostMessageDialog
+            open={messageDialogOpen}
+            onOpenChange={setMessageDialogOpen}
+            queues={queues}
+            onSendMessage={sendMessage}
+            disabled={queues.length === 0}
+          />
+          <CreateQueueDialog
+            open={createDialogOpen}
+            onOpenChange={setCreateDialogOpen}
+            onCreateQueue={createQueue}
+          />
+          <UpdateRetentionDialog
             open={updateRetentionDialogOpen}
             onOpenChange={setUpdateRetentionDialogOpen}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Update Retention Policy</DialogTitle>
-                <DialogDescription>
-                  Update how long messages are kept in the "
-                  {queueToUpdate?.name}" queue before being automatically
-                  deleted.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <label
-                    htmlFor="updatedRetentionPeriod"
-                    className="text-right"
-                  >
-                    Retention Period
-                  </label>
-                  <div className="col-span-3">
-                    <Input
-                      id="updatedRetentionPeriod"
-                      type="number"
-                      placeholder="In seconds (leave empty for no expiry)"
-                      value={updatedRetentionPeriod}
-                      onChange={(e) =>
-                        setUpdatedRetentionPeriod(e.target.value)
-                      }
-                    />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Time in seconds before messages are automatically deleted.
-                      Leave empty to keep messages indefinitely.
-                    </p>
-                  </div>
-                </div>
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-              </div>
-              <DialogFooter>
-                <Button onClick={updateRetentionPolicy}>
-                  Update Retention Policy
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-          <Dialog
+            queueToUpdate={queueToUpdate}
+            onUpdateRetention={updateRetentionPolicy}
+          />
+          <DeleteQueueDialog
             open={deleteQueueDialogOpen}
             onOpenChange={setDeleteQueueDialogOpen}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Purge & Delete Queue</DialogTitle>
-                <DialogDescription>
-                  Are you sure you want to purge and delete the queue "
-                  {queueToDelete?.name}"? This will permanently remove all
-                  messages and the queue itself. This action cannot be undone.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button
-                  variant="outline"
-                  onClick={() => setDeleteQueueDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button variant="destructive" onClick={purgeAndDeleteQueue}>
-                  Purge & Delete
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            queueToDelete={queueToDelete}
+            onDeleteQueue={purgeAndDeleteQueue}
+          />
         </div>
       </div>
 
@@ -666,321 +484,27 @@ export default function Home() {
       ) : (
         <div className="grid gap-6">
           {/* Queue Polling Section */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle>Poll Messages from Queue</CardTitle>
-              <CardDescription>
-                Select a queue to continuously poll for new messages
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-64">
-                    <Select
-                      onValueChange={setPollingQueue}
-                      value={pollingQueue}
-                      disabled={isPolling}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a queue to poll" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {queues.map((queue) => (
-                          <SelectItem key={queue._id} value={queue._id}>
-                            {queue.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {!isPolling ? (
-                    <Button onClick={startPolling} disabled={!pollingQueue}>
-                      Start Polling
-                    </Button>
-                  ) : (
-                    <Button variant="destructive" onClick={stopPolling}>
-                      Stop Polling
-                    </Button>
-                  )}
-                  {isPolling && pollingQueueData && (
-                    <Badge
-                      variant="outline"
-                      className="ml-2 flex gap-1 items-center"
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      Polling {pollingQueueData.name} every 5 seconds
-                    </Badge>
-                  )}
-                </div>
-
-                {isPolling && (
-                  <div className="border rounded-lg p-4 mt-4">
-                    {/* Progress bar showing time until next poll */}
-                    <div className="mb-4">
-                      <div className="flex justify-between text-xs text-muted-foreground mb-1">
-                        <span>Next poll in:</span>
-                        <span>
-                          {Math.ceil(
-                            (POLLING_INTERVAL -
-                              (progress / 100) * POLLING_INTERVAL) /
-                              1000
-                          )}{" "}
-                          seconds
-                        </span>
-                      </div>
-                      <Progress value={progress} className="h-1 bg-muted" />
-                    </div>
-
-                    <h3 className="text-lg font-medium mb-2">
-                      Message Polling Results
-                    </h3>
-                    {polledMessage ? (
-                      <div className="space-y-4">
-                        <div className="bg-muted p-3 rounded-md">
-                          <p className="font-medium mb-1">Message:</p>
-                          <p className="whitespace-pre-wrap">
-                            {polledMessage.body}
-                          </p>
-                          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                            <span>
-                              Created:{" "}
-                              {new Date(
-                                polledMessage.createdAt
-                              ).toLocaleString()}
-                            </span>
-                            <span>ID: {polledMessage._id}</span>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={acknowledgeMessage}
-                          variant="outline"
-                          disabled={isAcknowledging}
-                          className="flex gap-1"
-                        >
-                          <Check className="h-4 w-4" />
-                          Acknowledge Message
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="text-center p-6 text-muted-foreground">
-                        <p>No messages available in queue</p>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <QueuePollingSection
+            queues={queues}
+            pollingInterval={POLLING_INTERVAL}
+          />
 
           {/* Queues Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Your Queues</CardTitle>
-              <CardDescription>
-                Manage your message queues and their endpoints
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Created</TableHead>
-                    <TableHead>Retention Period</TableHead>
-                    <TableHead>Endpoint URL</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {queues.map((queue) => (
-                    <TableRow key={queue._id}>
-                      <TableCell className="font-medium">
-                        <Link
-                          href={`/queues/${queue.slug}`}
-                          className="hover:underline text-primary"
-                        >
-                          {queue.name}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        {new Date(queue.createdAt).toLocaleString()}
-                      </TableCell>
-                      <TableCell>
-                        {queue.retentionPeriod !== null &&
-                        queue.retentionPeriod !== undefined &&
-                        queue.retentionPeriod > 0 ? (
-                          <>
-                            {queue.retentionPeriod < 60
-                              ? `${queue.retentionPeriod} seconds`
-                              : queue.retentionPeriod < 3600
-                              ? `${Math.round(
-                                  queue.retentionPeriod / 60
-                                )} minutes`
-                              : queue.retentionPeriod < 86400
-                              ? `${Math.round(
-                                  queue.retentionPeriod / 3600
-                                )} hours`
-                              : `${Math.round(
-                                  queue.retentionPeriod / 86400
-                                )} days`}
-                          </>
-                        ) : (
-                          <span className="text-muted-foreground">
-                            No expiry
-                          </span>
-                        )}
-                      </TableCell>
-                      <TableCell className="truncate max-w-md">
-                        <code className="bg-muted px-1 py-0.5 rounded text-sm">
-                          {getQueueUrl(queue.slug)}
-                        </code>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Link href={`/queues/${queue.slug}`}>
-                            <Button variant="outline" size="sm">
-                              View
-                            </Button>
-                          </Link>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              navigator.clipboard.writeText(
-                                getQueueUrl(queue.slug)
-                              );
-                              toast.success("Queue URL copied to clipboard");
-                            }}
-                          >
-                            Copy URL
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setQueueToUpdate(queue);
-                              setUpdatedRetentionPeriod(
-                                queue.retentionPeriod != null &&
-                                  queue.retentionPeriod > 0
-                                  ? String(queue.retentionPeriod)
-                                  : ""
-                              );
-                              setUpdateRetentionDialogOpen(true);
-                            }}
-                          >
-                            Edit Retention
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => {
-                              setQueueToDelete(queue);
-                              setDeleteQueueDialogOpen(true);
-                            }}
-                          >
-                            Purge & Delete
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <QueueTable
+            queues={queues}
+            getQueueUrl={getQueueUrl}
+            onOpenUpdateRetention={(queue: Queue) => {
+              setQueueToUpdate(queue);
+              setUpdateRetentionDialogOpen(true);
+            }}
+            onOpenDeleteQueue={(queue: Queue) => {
+              setQueueToDelete(queue);
+              setDeleteQueueDialogOpen(true);
+            }}
+          />
 
-          {/* Delete Queue Dialog */}
-          <Dialog
-            open={deleteQueueDialogOpen}
-            onOpenChange={setDeleteQueueDialogOpen}
-          >
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Purge & Delete Queue</DialogTitle>
-                <DialogDescription>
-                  Are you sure you want to purge and delete the queue "
-                  {queueToDelete?.name}"? This will permanently remove all
-                  messages and the queue itself. This action cannot be undone.
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter className="gap-2 sm:gap-0">
-                <Button
-                  variant="outline"
-                  onClick={() => setDeleteQueueDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button variant="destructive" onClick={purgeAndDeleteQueue}>
-                  Purge & Delete
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>API Usage</CardTitle>
-              <CardDescription>
-                How to use the queue service API
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div>
-                  <h3 className="font-bold mb-2">Send a message to a queue</h3>
-                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
-                    {`POST /api/queues/{queue-slug}/messages
-Content-Type: application/json
-
-{
-  "message": "Your message content"
-}`}
-                  </code>
-                </div>
-                <div>
-                  <h3 className="font-bold mb-2">
-                    Poll a message from a queue
-                  </h3>
-                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
-                    {`GET /api/queues/{queue-slug}/messages`}
-                  </code>
-                </div>
-                <div>
-                  <h3 className="font-bold mb-2">
-                    Acknowledge (delete) a message
-                  </h3>
-                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
-                    {`DELETE /api/queues/{queue-slug}/messages?messageId={message-id}`}
-                  </code>
-                </div>
-                <div>
-                  <h3 className="font-bold mb-2">
-                    Purge all messages from a queue
-                  </h3>
-                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
-                    {`POST /api/queues/{queue-slug}/purge`}
-                  </code>
-                </div>
-                <div>
-                  <h3 className="font-bold mb-2">Delete a queue</h3>
-                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
-                    {`DELETE /api/queues/{queue-slug}`}
-                  </code>
-                </div>
-                <div>
-                  <h3 className="font-bold mb-2">Purge & Delete a queue</h3>
-                  <code className="block bg-muted p-4 rounded-md text-sm whitespace-pre overflow-x-auto">
-                    {`# Step 1: Purge all messages
-POST /api/queues/{queue-slug}/purge
-
-# Step 2: Delete the queue
-DELETE /api/queues/{queue-slug}`}
-                  </code>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          {/* API Usage Guide */}
+          <ApiUsageGuide />
         </div>
       )}
     </div>
