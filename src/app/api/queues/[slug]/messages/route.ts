@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { queueRepository } from '@/lib/repositories/QueueRepository';
-import { messageRepository } from '@/lib/repositories/MessageRepository';
+import { queueService } from '@/lib/services/QueueService';
+import { ApiError } from '@/lib/errors/ApiError';
 
 // POST /api/queues/[slug]/messages - Send a message to a queue
 export async function POST(
@@ -20,24 +20,14 @@ export async function POST(
       );
     }
 
-    // Find the queue using repository
-    const queue = await queueRepository.findBySlug(slug);
-    if (!queue) {
-      return NextResponse.json(
-        { error: 'Queue not found' },
-        { status: 404 }
-      );
-    }
-
-    // Create a new message using repository
-    const newMessage = await messageRepository.create({
-      queueId: queue._id,
-      body: message,
-    });
-
+    // Use queue service to send message
+    const newMessage = await queueService.sendMessage(slug, message);
     return NextResponse.json({ message: newMessage }, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -50,17 +40,8 @@ export async function GET(
     // Use the updated Next.js 15 approach to access dynamic route params
     const { slug } = await params;
     
-    // Find the queue using repository
-    const queue = await queueRepository.findBySlug(slug);
-    if (!queue) {
-      return NextResponse.json(
-        { error: 'Queue not found' },
-        { status: 404 }
-      );
-    }
-
-    // Get the oldest unprocessed message using repository
-    const message = await messageRepository.findOldestUnprocessed(queue._id);
+    // Use queue service to poll message
+    const message = await queueService.pollMessage(slug);
 
     if (!message) {
       return NextResponse.json({ message: null });
@@ -68,7 +49,10 @@ export async function GET(
 
     return NextResponse.json({ message });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -90,18 +74,13 @@ export async function DELETE(
       );
     }
 
-    // Mark message as processed using repository
-    const message = await messageRepository.markAsProcessed(messageId);
-
-    if (!message) {
-      return NextResponse.json(
-        { error: 'Message not found' },
-        { status: 404 }
-      );
-    }
-
+    // Use queue service to acknowledge message
+    await queueService.acknowledgeMessage(messageId);
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error instanceof ApiError) {
+      return NextResponse.json({ error: error.message }, { status: error.statusCode });
+    }
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 } 
