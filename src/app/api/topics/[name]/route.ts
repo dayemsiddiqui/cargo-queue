@@ -10,7 +10,8 @@ interface RouteParams {
 
 export async function GET(request: Request, { params }: RouteParams) {
     try {
-        const topic = await topicService.getTopic(params.name);
+        const { name } = params;
+        const topic = await topicService.getTopic(name);
         return NextResponse.json(topic);
     } catch (error) {
         if (error instanceof ApiError) {
@@ -22,7 +23,8 @@ export async function GET(request: Request, { params }: RouteParams) {
 
 export async function DELETE(request: Request, { params }: RouteParams) {
     try {
-        await topicService.deleteTopic(params.name);
+        const { name } = params;
+        await topicService.deleteTopic(name);
         return NextResponse.json({ success: true });
     } catch (error) {
         if (error instanceof ApiError) {
@@ -34,6 +36,7 @@ export async function DELETE(request: Request, { params }: RouteParams) {
 
 export async function POST(request: Request, { params }: RouteParams) {
     try {
+        const { name } = params;
         const body = await request.json();
         const { message } = body;
 
@@ -41,7 +44,7 @@ export async function POST(request: Request, { params }: RouteParams) {
             throw ApiError.badRequest('Message is required');
         }
 
-        await topicService.publishMessage(params.name, message);
+        await topicService.publishMessage(name, message);
         return NextResponse.json({ success: true });
     } catch (error) {
         if (error instanceof ApiError) {

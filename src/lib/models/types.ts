@@ -1,5 +1,6 @@
 export interface IMessage {
-  queueId: string;
+  _id?: any;
+  queueId: any;
   body: string;
   processed?: boolean;
   visibilityTimeout?: Date | null;

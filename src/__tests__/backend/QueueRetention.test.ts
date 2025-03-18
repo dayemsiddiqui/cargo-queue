@@ -44,7 +44,10 @@ describe('Queue Retention Policy Tests', () => {
     
     // expiresAt should be approximately retentionPeriod seconds in the future
     const now = new Date();
-    const expiresAt = new Date(message.expiresAt);
+    // Check if expiresAt is defined before creating Date
+    expect(message.expiresAt).not.toBeNull();
+    expect(message.expiresAt).not.toBeUndefined();
+    const expiresAt = new Date(message.expiresAt as Date);
     const diffInSeconds = Math.round((expiresAt.getTime() - now.getTime()) / 1000);
     
     // Allow 1 second tolerance for test execution time
@@ -72,7 +75,10 @@ describe('Queue Retention Policy Tests', () => {
     
     // expiresAt should be approximately retentionPeriod seconds in the future
     const now = new Date();
-    const expiresAt = new Date(updatedMessage!.expiresAt!);
+    // Make sure expiresAt exists before creating a Date
+    expect(updatedMessage!.expiresAt).not.toBeNull();
+    expect(updatedMessage!.expiresAt).not.toBeUndefined();
+    const expiresAt = new Date(updatedMessage!.expiresAt as Date);
     const diffInSeconds = Math.round((expiresAt.getTime() - now.getTime()) / 1000);
     
     // Allow 1 second tolerance for test execution time
