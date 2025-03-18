@@ -49,6 +49,7 @@ interface Queue {
   name: string;
   slug: string;
   createdAt: string;
+  retentionPeriod: number | null;
 }
 
 // Message type
@@ -71,6 +72,12 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [selectedQueue, setSelectedQueue] = useState<string>("");
   const [message, setMessage] = useState<string>("");
+  const [retentionPeriod, setRetentionPeriod] = useState<string>("");
+  const [updateRetentionDialogOpen, setUpdateRetentionDialogOpen] =
+    useState<boolean>(false);
+  const [queueToUpdate, setQueueToUpdate] = useState<Queue | null>(null);
+  const [updatedRetentionPeriod, setUpdatedRetentionPeriod] =
+    useState<string>("");
 
   // Polling states
   const [pollingQueue, setPollingQueue] = useState<string>("");
@@ -107,7 +114,11 @@ export default function Home() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ name: newQueueName }),
+        body: JSON.stringify({
+          name: newQueueName,
+          retentionPeriod:
+            retentionPeriod === "" ? null : Number(retentionPeriod),
+        }),
       });
 
       const data = await response.json();
@@ -118,11 +129,69 @@ export default function Home() {
 
       setDialogOpen(false);
       setNewQueueName("");
+      setRetentionPeriod("");
       fetchQueues();
       toast.success("Queue created successfully!");
     } catch (err: any) {
       setError(err.message);
       toast.error(err.message || "Failed to create queue");
+      console.error(err);
+    }
+  };
+
+  // Update queue retention policy
+  const updateRetentionPolicy = async () => {
+    if (!queueToUpdate) return;
+
+    try {
+      // Handle empty string by setting to null (no expiry)
+      // And ensure 0 is also treated as null
+      const retentionValue =
+        updatedRetentionPeriod === ""
+          ? null
+          : Number(updatedRetentionPeriod) === 0
+          ? null
+          : Number(updatedRetentionPeriod);
+
+      const response = await fetch(
+        `/api/queues/${queueToUpdate.slug}/retention`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            retentionPeriod: retentionValue,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update retention policy");
+      }
+
+      // Update the queue in the local state to avoid a full refetch
+      setQueues((prevQueues) =>
+        prevQueues.map((q) =>
+          q._id === queueToUpdate._id
+            ? { ...q, retentionPeriod: data.queue.retentionPeriod }
+            : q
+        )
+      );
+
+      setUpdateRetentionDialogOpen(false);
+      setQueueToUpdate(null);
+      setUpdatedRetentionPeriod("");
+
+      // Force a complete refresh of queues
+      await fetchQueues();
+
+      toast.success("Retention policy updated successfully!");
+    } catch (err: any) {
+      setError(err.message);
+      toast.error(err.message || "Failed to update retention policy");
       console.error(err);
     }
   };
@@ -374,22 +443,93 @@ export default function Home() {
               <DialogHeader>
                 <DialogTitle>Create a new queue</DialogTitle>
                 <DialogDescription>
-                  Enter a name for your new queue. This will create a unique URL
-                  endpoint for sending and receiving messages.
+                  Enter a name for your new queue and optionally set a retention
+                  period. Messages will be automatically deleted after the
+                  retention period expires.
                 </DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
-                <Input
-                  id="name"
-                  placeholder="Queue name"
-                  value={newQueueName}
-                  onChange={(e) => setNewQueueName(e.target.value)}
-                />
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <label htmlFor="name" className="text-right">
+                    Queue Name
+                  </label>
+                  <Input
+                    id="name"
+                    className="col-span-3"
+                    placeholder="Queue name"
+                    value={newQueueName}
+                    onChange={(e) => setNewQueueName(e.target.value)}
+                  />
+                </div>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <label htmlFor="retentionPeriod" className="text-right">
+                    Retention Period
+                  </label>
+                  <div className="col-span-3">
+                    <Input
+                      id="retentionPeriod"
+                      type="number"
+                      placeholder="In seconds (leave empty for no expiry)"
+                      value={retentionPeriod}
+                      onChange={(e) => setRetentionPeriod(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Time in seconds before messages are automatically deleted.
+                      Leave empty to keep messages indefinitely.
+                    </p>
+                  </div>
+                </div>
                 {error && <p className="text-red-500 text-sm">{error}</p>}
               </div>
               <DialogFooter>
                 <Button onClick={createQueue} disabled={!newQueueName.trim()}>
                   Create Queue
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Dialog
+            open={updateRetentionDialogOpen}
+            onOpenChange={setUpdateRetentionDialogOpen}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Update Retention Policy</DialogTitle>
+                <DialogDescription>
+                  Update how long messages are kept in the "
+                  {queueToUpdate?.name}" queue before being automatically
+                  deleted.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <label
+                    htmlFor="updatedRetentionPeriod"
+                    className="text-right"
+                  >
+                    Retention Period
+                  </label>
+                  <div className="col-span-3">
+                    <Input
+                      id="updatedRetentionPeriod"
+                      type="number"
+                      placeholder="In seconds (leave empty for no expiry)"
+                      value={updatedRetentionPeriod}
+                      onChange={(e) =>
+                        setUpdatedRetentionPeriod(e.target.value)
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Time in seconds before messages are automatically deleted.
+                      Leave empty to keep messages indefinitely.
+                    </p>
+                  </div>
+                </div>
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+              </div>
+              <DialogFooter>
+                <Button onClick={updateRetentionPolicy}>
+                  Update Retention Policy
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -414,6 +554,54 @@ export default function Home() {
         </Card>
       ) : (
         <div className="grid gap-6">
+          {/* Update Retention Policy Dialog */}
+          <Dialog
+            open={updateRetentionDialogOpen}
+            onOpenChange={setUpdateRetentionDialogOpen}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Update Retention Policy</DialogTitle>
+                <DialogDescription>
+                  Update how long messages are kept in the "
+                  {queueToUpdate?.name}" queue before being automatically
+                  deleted.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <label
+                    htmlFor="updatedRetentionPeriod"
+                    className="text-right"
+                  >
+                    Retention Period
+                  </label>
+                  <div className="col-span-3">
+                    <Input
+                      id="updatedRetentionPeriod"
+                      type="number"
+                      placeholder="In seconds (leave empty for no expiry)"
+                      value={updatedRetentionPeriod}
+                      onChange={(e) =>
+                        setUpdatedRetentionPeriod(e.target.value)
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Time in seconds before messages are automatically deleted.
+                      Leave empty to keep messages indefinitely.
+                    </p>
+                  </div>
+                </div>
+                {error && <p className="text-red-500 text-sm">{error}</p>}
+              </div>
+              <DialogFooter>
+                <Button onClick={updateRetentionPolicy}>
+                  Update Retention Policy
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           {/* Queue Polling Section */}
           <Card className="mb-6">
             <CardHeader>
@@ -536,6 +724,7 @@ export default function Home() {
                   <TableRow>
                     <TableHead>Name</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead>Retention Period</TableHead>
                     <TableHead>Endpoint URL</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -553,6 +742,31 @@ export default function Home() {
                       </TableCell>
                       <TableCell>
                         {new Date(queue.createdAt).toLocaleString()}
+                      </TableCell>
+                      <TableCell>
+                        {queue.retentionPeriod !== null &&
+                        queue.retentionPeriod !== undefined &&
+                        queue.retentionPeriod > 0 ? (
+                          <>
+                            {queue.retentionPeriod < 60
+                              ? `${queue.retentionPeriod} seconds`
+                              : queue.retentionPeriod < 3600
+                              ? `${Math.round(
+                                  queue.retentionPeriod / 60
+                                )} minutes`
+                              : queue.retentionPeriod < 86400
+                              ? `${Math.round(
+                                  queue.retentionPeriod / 3600
+                                )} hours`
+                              : `${Math.round(
+                                  queue.retentionPeriod / 86400
+                                )} days`}
+                          </>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            No expiry
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="truncate max-w-md">
                         <code className="bg-muted px-1 py-0.5 rounded text-sm">
@@ -577,6 +791,22 @@ export default function Home() {
                             }}
                           >
                             Copy URL
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setQueueToUpdate(queue);
+                              setUpdatedRetentionPeriod(
+                                queue.retentionPeriod != null &&
+                                  queue.retentionPeriod > 0
+                                  ? String(queue.retentionPeriod)
+                                  : ""
+                              );
+                              setUpdateRetentionDialogOpen(true);
+                            }}
+                          >
+                            Edit Retention
                           </Button>
                         </div>
                       </TableCell>

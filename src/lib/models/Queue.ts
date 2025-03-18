@@ -24,6 +24,17 @@ const QueueSchema = new mongoose.Schema({
   },
 });
 
+// Transform the document to always include retentionPeriod even if null
+QueueSchema.set('toJSON', {
+  transform: function (doc, ret) {
+    // Ensure retentionPeriod is explicitly set to null if undefined or 0
+    if (ret.retentionPeriod === undefined || ret.retentionPeriod === 0) {
+      ret.retentionPeriod = null;
+    }
+    return ret;
+  },
+});
+
 // Define the Message schema
 const MessageSchema = new mongoose.Schema({
   queueId: {

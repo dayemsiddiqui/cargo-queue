@@ -2,6 +2,7 @@ import { queueRepository } from '@/lib/repositories/QueueRepository';
 import { messageRepository } from '@/lib/repositories/MessageRepository';
 import { ApiError } from '@/lib/errors/ApiError';
 import { Message } from '@/lib/models/Queue';
+import { Queue } from '@/lib/models/Queue';
 
 export class QueueService {
   async findAllQueues() {
@@ -22,14 +23,21 @@ export class QueueService {
       throw ApiError.notFound(`Queue with slug '${slug}' not found`);
     }
     
-    // Update the retention policy
-    const updatedQueue = await queueRepository.update(queue._id, { retentionPeriod });
+    // Force null if the value is 0 or undefined for consistency
+    const retentionValue = retentionPeriod === 0 || retentionPeriod === undefined ? null : retentionPeriod;
+    
+    // Make a direct database update to set the field explicitly
+    const updatedQueue = await Queue.findByIdAndUpdate(
+      queue._id,
+      { $set: { retentionPeriod: retentionValue } },
+      { new: true }
+    );
     
     // Update expiry for existing messages if retention policy is changed
-    if (retentionPeriod !== null) {
+    if (retentionValue !== null) {
       // Calculate new expiry date based on retentionPeriod
       const now = Date.now();
-      const newExpiryDate = new Date(now + retentionPeriod * 1000);
+      const newExpiryDate = new Date(now + retentionValue * 1000);
       
       // Update all messages in this queue
       await Message.updateMany(

@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { name } = body;
+    const { name, retentionPeriod } = body;
 
     if (!name) {
       return NextResponse.json(
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create a new queue
-    const queue = await queueService.createQueue(name);
+    const queue = await queueService.createQueue(name, retentionPeriod);
     return NextResponse.json({ queue }, { status: 201 });
     
   } catch (error: any) {
